@@ -1,0 +1,137 @@
+\documentclass[]{report}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\addtolength{\textwidth}{2cm}
+\addtolength{\hoffset}{-1cm}
+\addtolength{\textheight}{1cm}
+\addtolength{\voffset}{-0.5cm}
+\usepackage[parfill]{parskip}
+\usepackage{todonotes}
+\setlength{\parskip}{0.25in}
+\setcounter{secnumdepth}{0}
+% Title Page
+\title{Joule Heating Calculation for Cantilever Modelling Program}
+\author{Rory Lambert\\ AFM Group, University of Glasgow}
+
+\begin{document}
+\maketitle
+
+\section{Theory}
+
+As current travels through the metal layers of the probe, Joule heating occurs. When considering purely resistive materials (no reactance), it is reasonable to assume 100\%  of the generated electrical power is dissipated as heat. For a simple estimate of the probe power, $P=I^2R$ may be used, however this is not appropriate for the distributed model. Instead, we require an array of elemental heat generation magnitudes which can be used with our thermal resistance matrix to calculate the temperature distribution.
+
+\section{Derivation}
+
+Starting from the Joule-Lenz law;
+\begin{equation}\label{eq:joule}
+P(x)[n]=I^2R(x)[n]
+\end{equation}
+
+The above can also be stated in terms of the current density and metal resistivity;
+
+\begin{equation}
+Q(x)[n]=j(x)[n]^2\rho
+\end{equation}
+
+Where $j$ denotes the current density, and is the quotient of current and conductor cross-section in the direction of current flow, $A$. $\rho$ denotes the electrical resistivity of the metal, and is related to its resistance through the equation;
+
+\begin{equation}\label{eq:Relec}
+R(x)[n]=\frac{\rho L(x)[n]}{A(x)[n]}
+\end{equation}
+
+For much of the probe, the current flow occurs parallel to the x direction. In such cases, we begin by calculating the resistance of the element using Equation \ref{eq:Relec};
+
+\begin{equation}\label{eq:Relec_dist}
+R(x)[n]=\frac{\rho dx(x)[n]}{w(x)[n]t(x)[n]}
+\end{equation}
+
+In which $L$ is replaced by $dx(x)$ - the sampling length, and the cross section of an element is given by its x-dependent width and thickness. Although metal layers are deposited uniformly, we must still consider the case in which the metal is deposited on the pyramid slope. Here, the thickness of the metal in the direction of current flow is reduced when compared with its nominal thickness as the following;
+
+\begin{equation}
+t_{slope}=t \cos(46.5^{\circ})
+\end{equation}
+
+Where $46.5^{\circ}$ is the angle between the \{313\} planes of the pyramid and a (100) surface plane.
+
+The sample width,  $dx(x)$ contains an $x$ dependence, which arises due to differences between the writing plane and the projection plane when defining features on an angled surface. This situation occurs on the pyramid sidewalls, whose position is fixed at $139\mu m$, so a simple trigonometric correction can be applied to all samples in which $dx \times [n] >= 139\mu m$.
+
+\subsection{Correcting for Palladium angle}
+
+Correct treatment of the Pd sensor region is extremely important since this area will produce the majority of the heat experienced by the probe. A sensible solution is non-trivial however, due to two factors;
+
+\begin{itemize}
+  \item The $45^{\circ}$ angle at which this layer is typically drawn.
+  \item The tapering of the tip towards the contact, and the fact that the current should `loop around' the tip here.
+\end{itemize}
+
+
+Before implementing a correction for the first, we must define conditions for which designs are suitable for analysis with this software.
+
+\begin{itemize}
+  \item The sensor region must have uniform width in the direction of current flow, discounting the tip taper.
+  \item The sensor must be drawn at an angle of $45^{\circ}$ around the tip.
+\end{itemize}
+
+The latter condition reduces some flexibility in possible designs, however it is the author's opinion that this is the optimum sensor angle for these devices. Any more acute and current crowding is liable to reduce the sensor lifetime and decrease temperature sensitivity. At steep angles, minimal current will pass through the sensor apex, which is where much of the resistance change takes place. Any more obtuse an angle and much of the sensor would no longer lie on one facet of the pyramid. This will introduce kinks in the metal layer that have been observed to exhibit high resistance due to poor continuity, and often serve as nucleation sites for electromigration induced defects.
+
+With the above conditions in place, we can adopt a strategy in which we calculate the volumetric power generation and scale to element area. This assumes uniform power generation across the entire sensor, which we believe to be an accurate treatment. All calculations are performed assuming symmetry along the x axis, so the sensor reduces in width towards the apex when considered this way. This increases the power generation in this region, which is not the case, since the current is not actually restricted, it just has to change direction. With the scaling strategy applied, the power generation per unit area is independent of this tapering.
+
+To begin, we define a fixed width, $\gamma$ as the mode of the sensor width. This is more accurate than mean, since the taper is not considered. This, and all other widths used in the Pd power calculation are scaled by $sin(45)$ to account for the width in the direction of current flow (henceforth the $x'$ direction) being narrower than the width in the $x$ direction.
+
+
+%We calculte the volumetric power as before (Equation \ref{eq:joule}) but with some changes to the resistance calculation;
+
+%\begin{equation}
+%R[n] = \frac{\rho dx_x'}{\gamma t_x}
+%\end{equation}
+
+%Note that the resulting volumetric power is still an array, but is independent of width.
+
+The method is most easily understood by starting from volumetric power density. For clarity, we will omit elemental notation and trigonometric corrections until the end of this derivation.
+
+\begin{equation}\label{eq:init}
+Q = j^2\rho
+\end{equation}
+
+\begin{equation}\label{eq:currentdens}
+j=\frac{I}{\gamma t}
+\end{equation}
+
+\begin{equation}
+R=\frac{\rho L}{A} \therefore \rho=\frac{RA}{L} = \frac{R \gamma t}{dx}
+\end{equation}
+
+Substituting in $\rho$ to Equation \ref{eq:init} and reducing;
+
+\begin{equation}
+Q  = \frac{I^2 R}{\gamma t dx}
+\end{equation}
+
+Which is clearly power per meter cubed. Multiplying through by the dimensions of the element, ($t \times w(x) \times dx $), gives the power per element which is our desired value;
+
+\begin{equation}
+Q(x)[n] = I^2R(x)[n]\frac{w(x)[n]}{\gamma}
+\end{equation}
+
+We arrive back to $Q=I^2R$, but with a scaling factor. Note that $w(x)$ will only ever equal, or be less than $\gamma$, resulting in power reduction at the apex rather than a power increase due to reduced width. This method is also computationally efficient, as we are able to calculate the electrical resistance of the sensor in this step by the summation of $R(x)$. This is a useful number to know when designing new probes, giving an idea of the sensitivity of ciruitry that would be required to interface with such a probe. Having access to the entire resistance distribution also allows for examintaion of the optimal position at which to connect voltage probes for four terminal designs.
+
+\section{Checking maximum current}
+When designing new probes, it is also useful to understand the maximum operating current they can withstand. We desire high-temperature operation, which could be achieved by simply driving the probe at greater current. In reality however, we observe a limit to the maximum operable current for these devices before they are killed by electromigration. It is not sufficient either to design a probe with higher resistance and drive it at the same current as is acceptable for standard probes. In each design, the maximum allowable current will vary in accordance with the dimensions (and therefore, resistance) of the sensor. We introduce a normalised limit based on the current density. Experiments performed by our group have shown the maximum allowable curent for the existing probes to be 3mA. For sustained current, a value of 2.5mA is more stable. Using Equation \ref{eq:currentdens}, and the sensor cross section we can estimate a current density limit. Note that the width and thickness used in the cross section calculation should account for the direction of current flow as outlined previously.
+
+\begin{equation}
+J=\frac{2.5\times10^{-3}}{(\cos(45^{\circ})\times 1.5\times 10^{-6})\times 40\times 10^{-9}\times \cos(46.5^{\circ})} = 8.56\times10^{10}A/m^3
+\end{equation}
+
+With this value, we can estimate the maximum current the probe can tolerate, which is useful for simulating its temperature profile and sensitivity.
+
+For a final check, we can perform the following calculation, in which we expect that the resulting current is close to that set prior to performing the simulation
+
+\begin{equation}
+I = \sqrt{\frac{\sum_{0}^{n} Q(x)[n]}{\sum_{0}^{n} R(x)[n]}}
+\end{equation}
+
+
+
+\end{document}
