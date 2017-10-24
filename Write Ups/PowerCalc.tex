@@ -22,29 +22,30 @@
 
 As current travels through the metal layers of the probe, Joule heating occurs. When considering purely resistive materials (no reactance), it is reasonable to assume 100\%  of the generated electrical power is dissipated as heat. For a simple estimate of the probe power, $P=I^2R$ may be used, however this is not appropriate for the distributed model. Instead, we require an array of elemental heat generation magnitudes which can be used with our thermal resistance matrix to calculate the temperature distribution.
 
+
 \section{Derivation}
 
 Starting from the Joule-Lenz law;
 \begin{equation}\label{eq:joule}
-P(x)[n]=I^2R(x)[n]
+P(x)=I^2R(x)
 \end{equation}
 
 The above can also be stated in terms of the current density and metal resistivity;
 
 \begin{equation}
-Q(x)[n]=j(x)[n]^2\rho
+Q(x)=j(x)^2\rho
 \end{equation}
 
 Where $j$ denotes the current density, and is the quotient of current and conductor cross-section in the direction of current flow, $A$. $\rho$ denotes the electrical resistivity of the metal, and is related to its resistance through the equation;
 
 \begin{equation}\label{eq:Relec}
-R(x)[n]=\frac{\rho L(x)[n]}{A(x)[n]}
+R(x)=\frac{\rho L(x)}{A(x)}
 \end{equation}
 
 For much of the probe, the current flow occurs parallel to the x direction. In such cases, we begin by calculating the resistance of the element using Equation \ref{eq:Relec};
 
 \begin{equation}\label{eq:Relec_dist}
-R(x)[n]=\frac{\rho dx(x)[n]}{w(x)[n]t(x)[n]}
+R(x)=\frac{\rho dx(x)}{w(x)t(x)}
 \end{equation}
 
 In which $L$ is replaced by $dx(x)$ - the sampling length, and the cross section of an element is given by its x-dependent width and thickness. Although metal layers are deposited uniformly, we must still consider the case in which the metal is deposited on the pyramid slope. Here, the thickness of the metal in the direction of current flow is reduced when compared with its nominal thickness as the following;
@@ -112,7 +113,7 @@ Q  = \frac{I^2 R}{\gamma t dx}
 Which is clearly power per meter cubed. Multiplying through by the dimensions of the element, ($t \times w(x) \times dx $), gives the power per element which is our desired value;
 
 \begin{equation}
-Q(x)[n] = I^2R(x)[n]\frac{w(x)[n]}{\gamma}
+Q(x) = I^2R(x)\frac{w(x)}{\gamma}
 \end{equation}
 
 We arrive back to $Q=I^2R$, but with a scaling factor. Note that $w(x)$ will only ever equal, or be less than $\gamma$, resulting in power reduction at the apex rather than a power increase due to reduced width. This method is also computationally efficient, as we are able to calculate the electrical resistance of the sensor in this step by the summation of $R(x)$. This is a useful number to know when designing new probes, giving an idea of the sensitivity of ciruitry that would be required to interface with such a probe. Having access to the entire resistance distribution also allows for examintaion of the optimal position at which to connect voltage probes for four terminal designs.
