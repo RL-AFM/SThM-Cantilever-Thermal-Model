@@ -1,37 +1,36 @@
-# -*- coding: utf-8 -*-
-%matplotlib
-
-"""
-Created on Fri Feb 17 11:50:51 2017
-
-@author: me
-"""
 
 # -*- coding: utf-8 -*-
 import os.path
 import datetime
 
-import numpy as np
-import numpy.polynomial.polynomial as poly
 
+
+
+from gdsCAD import *
+import numpy as np
 import matplotlib.pyplot as plt
+import numpy.polynomial.polynomial as poly
+from math import log10, floor
 import matplotlib
 from matplotlib import style
 from matplotlib import cm
-from matplotlib import rc
 style.use('ggplot')
-
+from matplotlib import rc
+import fitsig2 as fs2
 import matplotlib.ticker
 rc('text', usetex=True)
 rc('figure', figsize=(22,14.2))
 matplotlib.rcParams['font.serif'] = 'CMU Serif'
 matplotlib.rcParams['font.family'] = 'serif'
+
 matplotlib.rcParams['font.size'] = 22
+LARGE_FONT= ("Segoe UI Semilight", 12)
+BUTTON_FONT = ("Segoe UI", 10)
 import tabulate
 
-import fitsig2 as fs2
-from gdsmanipulation import *
-
+import sys
+from Tkinter import Tk
+from tkFileDialog import askopenfilename
 
 lowdx=1e-6
 hidx=25e-9
@@ -58,11 +57,147 @@ for key,plot in fdict.iteritems():
 
 colour_dict={'SiN':'darkgreen','Au':'orange','Pd':'darkgrey','Au passive':'gold','Pd passive':'lightblue','Parallel':'red'}
 
+#------------------------FILE CHOOSER-------------------------------------------
+def choosefile():
+    Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+    filename = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+    print(filename)
+    return filename
+
+
+#-------------------------------------------------------------------------------
+def get_elements_from_GDS(myfile,plot=False):
+    #start by opening the GDS file
+    print '--> Importing data from file: {0}'.format(myfile)
+    probe_GDS = core.GdsImport(myfile)
+
+    #get the list of cells
+    cellname=probe_GDS.keys()
+    #we only want one cell in the list - if there are more, break
+    if len(cellname)>1: raise ValueError ('Too many cells in GDS file. Please include one cell only')
+    #change the name from single item list to str
+    cellname=cellname[0]
+
+    #get the elements contained within this cell
+    elements=probe_GDS[cellname].elements
+    print '--> Sucessfully loaded elements from GDS file'
+    return elements
+
+#-------------------------------------------------------------------------------
+#rounds an input number to the desired number of significant figures
+round_to_n = lambda x, n: round(x, -int(floor(log10(x))) + (n - 1))
+
+#-------------------------------------------------------------------------------
+#check that all elements have appropriate dimensions (5,2) and sampling width
+def check_dimensions_of_elements(myDict):
+    for name,data in myDict.iteritems():
+        print '--> Checking element shape of {0} layer'.format(name)
+        for entry in data:
+            if entry.points.shape!=np.zeros((5,2)).shape:        #if not a 5,2 polygon then break
+                print '----> Element coordinates not correct shape (5,2). Element is {0} at position:\n{1}'.format(entry,entry.points)
+    print '--> Element checking complete\n'
+#-------------------------------------------------------------------------------
+#given an element object, find its horizontal length (dx)
+#supply with [0] and [-1] to find the first and last dx's
+def getdx(segment):
+    return round_to_n(segment.points[1][0]-segment.points[0][0],2)
+
+
+def get_dual_dx(SiN_ordered):
+    lowdx=getdx(SiN_ordered[0])*1e-6
+    hidx=getdx(SiN_ordered[-1])*1e-6
+    print '--> Low resolution dx = {0:.2}um'.format(lowdx*1e6)
+    print '--> High resolution dx = {0:.2}um'.format(hidx*1e6)
+    return lowdx, hidx
 
 
 
 #-------------------------------------------------------------------------------
+#puts elements different layers of the cell into seperate dictionary entries
+def filter_elements_by_layer(set_of_elements):
+    myDict={'SiN':[],'Au':[],'Pd':[],'Au passive':[],'Pd passive':[]}
 
+    for entry in set_of_elements:
+        if entry.layer==0: myDict['SiN'].append(entry)
+        elif entry.layer==1: myDict['Au'].append(entry)
+        elif entry.layer==2: myDict['Pd'].append(entry)
+        elif entry.layer==3: myDict['Au passive'].append(entry)
+        elif entry.layer==4: myDict['Pd passive'].append(entry)
+
+        else:
+            raise ValueError ("Layer outside acceptable range (0-4). Please use Layer 0 for SiN, 1 for Au, 2 for Pd, 3 for passive Au, 4 for passive Pd")
+            break
+
+    if len(myDict['SiN'])==0: raise ValueError ('No data in SiN layer')
+    if len(myDict['Au'])==0: raise ValueError ('No data in Au layer')
+    if len(myDict['Pd'])==0: raise ValueError ('No data in Pd layer')
+    if len(myDict['Au passive'])==0: print 'No data found for passive Au'
+    if len(myDict['Pd passive'])==0: print 'No data found for passive Pd'
+
+    print '--> Successfully split layers into unique dict entries'
+    return myDict
+
+#-------------------------------------------------------------------------------
+#helper function for sorting. Tells an element to look for x coordinate of its points
+def getX0(element):
+    return element.points[0][0]
+
+def sort_in_x(dict_of_elements):
+    print '--> Sorting elements by their x position'
+    dictSorted=newDictSameKeys(dict_of_elements)
+    for name,item in dict_of_elements.iteritems():
+        print '---->Sorting {0}'.format(name)
+        dictSorted[name]=sorted(item, key=getX0)
+    print '--> Sucessfully sorted all materials by x position'
+    return dictSorted
+
+def newDictSameKeys(any_dict):
+    return {key:[] for key in any_dict.keys()}
+#-------------------------------------------------------------------------------
+
+def simpleWidth(oneMaterial):
+    #prep a new array for the result of width calculation
+    width=np.zeros(len(oneMaterial))
+    for count, entry in enumerate(oneMaterial):
+        #the width of any element is its area divided by sampling width. x2 for symmetry.
+        width[count]=((entry.area()*1e-12)/dx)*2.
+    return width
+
+def getWidths(dict_of_elements):
+    #get the length of each material's array
+    lengths = {key:len(value) for key,value in dict_of_elements.iteritems()}
+
+    #if one of them is zero, you dont have any data there
+    if any(x == 0 for x in lengths):
+        raise ValueError ('No data in one of the arrays - one material has no data on its layer')
+    #construct a dictionary of widths using helper function simpleWidth
+    widths = {key:simpleWidth(value) for key,value in dict_of_elements.iteritems()}
+    print '--> Successfully calculated widths of all elements for all materials'
+    return widths
+
+#-------------------------------------------------------------------------------
+#prints out a dictionary with keys and micron scaled values
+def micronPrint(anyDict):
+    for key,value in anyDict.iteritems():
+        print key,["{0:0.1f}".format(i*1e6) for i in value]
+
+#-------------------------------------------------------------------------------
+
+#Zero Pad
+def zeroPad(width_dict):
+    print '--> Performing zero padding of variable length metal arrays'
+    #dictionary comprehension. make a new dict with same keys containing length of arrays
+    lengths = {key:len(value) for key,value in width_dict.iteritems()}
+    #get the difference in length between the longest array (SiN) and the others
+    differences={key:(lengths['SiN']-value) for key, value in lengths.iteritems()}
+
+    #we can't pad with a dict comprehension, since Pd and Au need different pad types (front and rear)
+    width_dict['Au']=np.pad(width_dict['Au'],(0,differences['Au']),'constant')
+    width_dict['Au passive']=np.pad(width_dict['Au passive'],(0,differences['Au passive']),'constant')
+    width_dict['Pd']=np.pad(width_dict['Pd'],(differences['Pd'],0),'constant')
+    width_dict['Pd passive']=np.pad(width_dict['Pd passive'],(differences['Pd passive'],0),'constant')
+    print '-->Successfully zero padded metal arrays. All arrays now equal length'
+    return width_dict
 
 #-------------------------------------------------------------------------------
 
@@ -182,7 +317,45 @@ def askSampleConductivity():
 
 
 
+#calculate the generated thermopower of the metal elements. Pd needs a correction for the
+#45 degree angle (its narrower in x' (direction of current flow) than in x).
+#this is already handled in constructMetalDicts
+def getJouleHeat(metal_dict):
 
+    dxprime=dx/np.cos(np.deg2rad(45))
+    n=len(metal_dict['Pd']['width'])
+    I=askCurrent()
+    for material, dictionary in metal_dict.iteritems():
+        metal_dict[material]['power']=np.zeros(n)
+        if material == 'Pd':
+            print 'Entered power calc for Pd'
+            fixedwidth=estimatePdWidth(dictionary['width'],doTransform=False)
+            for s in range(0,n):
+                if dictionary['width'][s]!=0:
+                    w=dictionary['width'][s]/2.
+                    #if before the pyramid region, L=dx as normal
+                    if s*dx<=139:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*dxprime*w)/(dictionary['thickness'][s]*fixedwidth**2)
+                    #when on the pyramid, the drawn shape is actually dx/cos46.5 degrees longer
+                    #and the deposited metal layers are thinner
+                    #reduced thickness of metal arrays is already handled in constructMetalDicts()
+                    else:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*tipTilt(dxprime)*w)/(dictionary['thickness'][s]*fixedwidth**2)
+        else:
+            for s in range(0,n):
+                if dictionary['width'][s]!=0:
+                    w=dictionary['width'][s]/2.
+                    #if before the pyramid region, L=dx as normal
+                    if s*dx<=139:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*dxprime)/(dictionary['thickness'][s]*w)
+                    #when on the pyramid, the drawn shape is actually dx/cos46.5 degrees longer
+                    #and the deposited metal layers are thinner
+                    #reduced thickness of metal arrays is already handled in constructMetalDicts()
+                    else:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*tipTilt(dxprime))/(dictionary['thickness'][s]*w)
+        print '----> Power generated by {0}: {1:.2f}mW'.format(material, np.sum(dictionary['power'])*1e3)
+
+    print '--> Successfully calculated elemental power generation for all metal layers'
 
 def sumFinite(i):
     if type(i) is not np.ndarray:
@@ -593,118 +766,3 @@ def AssySim():
 
     print 'Assy style thermal resistance = {0:.2E} K/W'.format(coefs[1])
     return coefs[1]
-#%%<Main:file prep>
-################################# MAIN #########################################
-
-
-print 'Welcome to Cantilever Modeller GDSII Edition!'
-print '--> Beginning data import and preparation'
-
-
-#load the file
-
-
-#filename='.gds generated for testing/out5.gds'
-filename=choosefile().encode('ascii', 'ignore')
-elements=get_elements_from_GDS(filename)
-
-
-#filter by layer type
-filtered=filter_elements_by_layer(elements)
-check_dimensions_of_elements(filtered)
-#sort the layers by x position
-filteredAndSorted=sort_in_x(filtered)
-
-#get the dx's
-#lowdx,hidx=get_dual_dx(filteredAndSorted['SiN'])
-####MIGRATED TO HARDCODED DX's in cmodel_funcs
-
-#transforms all geometry in a given dx slice to an effective width
-#this includes slices which have two distinct elements
-collapsed=collapseStackedElements(filteredAndSorted)
-
-#put all the metal elements in the right place, surrounded by zeros
-padded=metalPlacement(collapsed)
-
-"""
-#########Plot effective widths##########
-for val in padded.itervalues():
-    if len(val)!=0:
-        plt.plot(val[:,0],val[:,1])
-plt.show()
-#######################################
-"""
-
-#prepare the metal layers and calculate the total (elemental) power gen
-sum_power,R=constructMetalDicts(padded,2.0e-3)
-
-
-"""
-transform_heater(1.5)
-J=2.5e-3/(transform_heater(1.5e-6)*correctEvapOnPyramid(40e-9))
-print J/1e10
-checkCurrentDensity(padded['Pd'])
-"""
-
-print '--> Data processing complete. Beginning simulation'
-
-
-
-#%%<Main:simulation>
-############################### SIMULATION #####################################
-
-#calculate elemental resistances
-thermal_resistances=getElementalResistance(padded)
-#before inputting a current value, sanity check the maximum allowable current
-#checkCurrentDensity(collapsed['Pd'])
-#get the Joule heating power. Just append it to the metals' dictionary under key 'power'
-#getJouleHeat(Metal)
-#work out the contact radius before doing any temperature distributions
-#this is important for calculation of the sample spreading resistance Rs=1/4ka
-contact_area=2.*hidx
-print '--> Calculated contact area as {0}nm'.format(contact_area*1E9)
-print '--> Solving elemental temperature matrix'
-#get the temperature rise given the selected current (hardcoded)
-T=getTemp(thermal_resistances['Parallel'],sum_power,user_input=False)
-
-print '--> Temperature distribution solved, drawing plots'
-
-#%%<Main:plotting>
-############################# PLOT 1 ##########################################
-
-sensor_pos=145 #sensor position in x, in um
-avgT=getAverageTemp(T,sensor_pos)
-fig_of_merit['Out of contact sensor temperature rise (K)']=['{0:.2f}'.format(avgT)]
-#get the x axis array for plotting
-xax=padded['SiN'][:,0]
-drawProbeNiceLayers(filteredAndSorted, skip=False)
-plotPower(sum_power,p,xax,True)
-plotDict(thermal_resistances,r,xax,True)
-plotArray(T,t, xax)
-annotateTemp(fdict[t],sensor_pos,avgT)
-f.show()
-
-print '--> Attempting to show first plot'
-
-############################## PLOT 2 #########################################
-
-f2,ax2=plt.subplots(1)
-plotSweep(thermal_resistances['Parallel'],sum_power,sensor_pos,contact_area,ax2)
-f2.show()
-
-
-
-print 'Simulation Complete'
-
-
-Rth=AssySim()
-fig_of_merit['Assy Style Thermal Resistance (K/W)'] = ['{0:.2E}'.format(Rth)]
-
-name=filename.split()[-1][8:-4] #only works when gds files are in /testing folder
-date=datetime.datetime.now().isoformat()[0:10]
-
-fig_of_merit['GDS Name']=[name]
-table= tabulate.tabulate(fig_of_merit, headers='keys', tablefmt='html',stralign='center',numalign='center')
-f = open(date + ' ' + name + '.txt', 'w')
-f.write(table)
-f.close()

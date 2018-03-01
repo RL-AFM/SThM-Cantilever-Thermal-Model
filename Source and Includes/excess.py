@@ -1,0 +1,107 @@
+
+
+#filename='.gds generated for testing/out5.gds'
+choosefile()
+get_elements_from_GDS()
+filter_elements_by_layer()
+check_dimensions_of_elements()
+sort_in_x()
+collapseStackedElements()
+metalPlacement()
+sum_power,R=constructMetalDicts(padded,2.0e-3)
+
+
+"""
+transform_heater(1.5)
+J=2.5e-3/(transform_heater(1.5e-6)*correctEvapOnPyramid(40e-9))
+print J/1e10
+checkCurrentDensity(padded['Pd'])
+"""
+
+
+
+
+#-------------------------------------------------------------------------------
+
+def simpleWidth(oneMaterial):
+    #prep a new array for the result of width calculation
+    width=np.zeros(len(oneMaterial))
+    for count, entry in enumerate(oneMaterial):
+        #the width of any element is its area divided by sampling width. x2 for symmetry.
+        width[count]=((entry.area()*1e-12)/dx)*2.
+    return width
+
+def getWidths(dict_of_elements):
+    #get the length of each material's array
+    lengths = {key:len(value) for key,value in dict_of_elements.iteritems()}
+
+    #if one of them is zero, you dont have any data there
+    if any(x == 0 for x in lengths):
+        raise ValueError ('No data in one of the arrays - one material has no data on its layer')
+    #construct a dictionary of widths using helper function simpleWidth
+    widths = {key:simpleWidth(value) for key,value in dict_of_elements.iteritems()}
+    print '--> Successfully calculated widths of all elements for all materials'
+    return widths
+
+#-------------------------------------------------------------------------------
+#prints out a dictionary with keys and micron scaled values
+def micronPrint(anyDict):
+    for key,value in anyDict.iteritems():
+        print key,["{0:0.1f}".format(i*1e6) for i in value]
+
+#Zero Pad
+def zeroPad(width_dict):
+    print '--> Performing zero padding of variable length metal arrays'
+    #dictionary comprehension. make a new dict with same keys containing length of arrays
+    lengths = {key:len(value) for key,value in width_dict.iteritems()}
+    #get the difference in length between the longest array (SiN) and the others
+    differences={key:(lengths['SiN']-value) for key, value in lengths.iteritems()}
+
+    #we can't pad with a dict comprehension, since Pd and Au need different pad types (front and rear)
+    width_dict['Au']=np.pad(width_dict['Au'],(0,differences['Au']),'constant')
+    width_dict['Au passive']=np.pad(width_dict['Au passive'],(0,differences['Au passive']),'constant')
+    width_dict['Pd']=np.pad(width_dict['Pd'],(differences['Pd'],0),'constant')
+    width_dict['Pd passive']=np.pad(width_dict['Pd passive'],(differences['Pd passive'],0),'constant')
+    print '-->Successfully zero padded metal arrays. All arrays now equal length'
+    return width_dict
+
+
+#calculate the generated thermopower of the metal elements. Pd needs a correction for the
+#45 degree angle (its narrower in x' (direction of current flow) than in x).
+#this is already handled in constructMetalDicts
+def getJouleHeat(metal_dict):
+
+    dxprime=dx/np.cos(np.deg2rad(45))
+    n=len(metal_dict['Pd']['width'])
+    I=askCurrent()
+    for material, dictionary in metal_dict.iteritems():
+        metal_dict[material]['power']=np.zeros(n)
+        if material == 'Pd':
+            print 'Entered power calc for Pd'
+            fixedwidth=estimatePdWidth(dictionary['width'],doTransform=False)
+            for s in range(0,n):
+                if dictionary['width'][s]!=0:
+                    w=dictionary['width'][s]/2.
+                    #if before the pyramid region, L=dx as normal
+                    if s*dx<=139:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*dxprime*w)/(dictionary['thickness'][s]*fixedwidth**2)
+                    #when on the pyramid, the drawn shape is actually dx/cos46.5 degrees longer
+                    #and the deposited metal layers are thinner
+                    #reduced thickness of metal arrays is already handled in constructMetalDicts()
+                    else:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*tipTilt(dxprime)*w)/(dictionary['thickness'][s]*fixedwidth**2)
+        else:
+            for s in range(0,n):
+                if dictionary['width'][s]!=0:
+                    w=dictionary['width'][s]/2.
+                    #if before the pyramid region, L=dx as normal
+                    if s*dx<=139:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*dxprime)/(dictionary['thickness'][s]*w)
+                    #when on the pyramid, the drawn shape is actually dx/cos46.5 degrees longer
+                    #and the deposited metal layers are thinner
+                    #reduced thickness of metal arrays is already handled in constructMetalDicts()
+                    else:
+                        dictionary['power'][s]=2.*((I**2)*dictionary['resistivity']*tipTilt(dxprime))/(dictionary['thickness'][s]*w)
+        print '----> Power generated by {0}: {1:.2f}mW'.format(material, np.sum(dictionary['power'])*1e3)
+
+    print '--> Successfully calculated elemental power generation for all metal layers'
