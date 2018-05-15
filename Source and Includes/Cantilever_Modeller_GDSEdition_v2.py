@@ -31,7 +31,7 @@ import tabulate
 
 import fitsig2 as fs2
 from gdsmanipulation import *
-
+import add_power
 
 lowdx=1e-6
 hidx=25e-9
@@ -607,10 +607,10 @@ print '--> Beginning data import and preparation'
 #filename='.gds generated for testing/out5.gds'
 filename=choosefile().encode('ascii', 'ignore')
 elements=get_elements_from_GDS(filename)
-
-
 #filter by layer type
 filtered=filter_elements_by_layer(elements)
+
+
 check_dimensions_of_elements(filtered)
 #sort the layers by x position
 filteredAndSorted=sort_in_x(filtered)
@@ -626,6 +626,11 @@ collapsed=collapseStackedElements(filteredAndSorted)
 #put all the metal elements in the right place, surrounded by zeros
 padded=metalPlacement(collapsed)
 
+
+#get the x axis as we will need this for plotting and external heating
+xax=padded['SiN'][:,0]
+
+
 """
 #########Plot effective widths##########
 for val in padded.itervalues():
@@ -636,8 +641,13 @@ plt.show()
 """
 
 #prepare the metal layers and calculate the total (elemental) power gen
-sum_power,R=constructMetalDicts(padded,2.0e-3)
+sum_power,R=constructMetalDicts(padded,2e-3)
 
+
+#external_heat=add_power.generate_external_heat(1e-3, 30, 40, xax)
+
+#if len(sum_power)==len(external_heat):
+    #sum_power +=external_heat
 
 """
 transform_heater(1.5)
@@ -672,11 +682,10 @@ print '--> Temperature distribution solved, drawing plots'
 #%%<Main:plotting>
 ############################# PLOT 1 ##########################################
 
-sensor_pos=145 #sensor position in x, in um
+sensor_pos=145. #sensor position in x, in um
 avgT=getAverageTemp(T,sensor_pos)
 fig_of_merit['Out of contact sensor temperature rise (K)']=['{0:.2f}'.format(avgT)]
-#get the x axis array for plotting
-xax=padded['SiN'][:,0]
+
 drawProbeNiceLayers(filteredAndSorted, skip=False)
 plotPower(sum_power,p,xax,True)
 plotDict(thermal_resistances,r,xax,True)
@@ -700,11 +709,22 @@ print 'Simulation Complete'
 Rth=AssySim()
 fig_of_merit['Assy Style Thermal Resistance (K/W)'] = ['{0:.2E}'.format(Rth)]
 
-name=filename.split()[-1][8:-4] #only works when gds files are in /testing folder
-date=datetime.datetime.now().isoformat()[0:10]
 
-fig_of_merit['GDS Name']=[name]
+############################Table of useful values#############################
+
+theDir='/'.join(filename.split('/')[:-1])+'/'
+theFile=''.join(filename.split('/')[-1][:-4])
+
+
+fig_of_merit['GDS Name']=[theFile]
 table= tabulate.tabulate(fig_of_merit, headers='keys', tablefmt='html',stralign='center',numalign='center')
-f = open(date + ' ' + name + '.txt', 'w')
+f = open(theDir+theFile+'_Results.txt', 'w')
 f.write(table)
 f.close()
+
+theFile
+############################Save the results####################################
+
+simresult={'k':thermal_resistances['Parallel'], 'p':sum_power, 'x':xax, 't':T}
+
+np.save(theDir+theFile+'_Data.npy', simresult)

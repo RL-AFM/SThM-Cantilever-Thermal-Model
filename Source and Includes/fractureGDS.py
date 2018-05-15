@@ -4,11 +4,16 @@ import gdspy
 import numpy as np
 import gdsmanipulation as gdsm
 
+"""Load a gds file and fracture into 1um/25nm segments"""
+
 '''Uncomment below to chose the file via GUI'''
-#filename=gdsm.choosefile()
+filename=gdsm.choosefile()
 '''Else hardcode it'''
-folderpath='C:/Users/me/OneDrive - University of Glasgow/PhD/2018/Cantilever-Modeller-GDS-Edition-LINUX FORK/gds generated for testing/'
-filename=folderpath + 'Dual dx tested/Original and quick cut/OriginalCant_unfractured.gds'
+#folderpath='C:/Users/me/OneDrive - University of Glasgow/PhD/2018/Cantilever-Modeller-GDS-Edition-LINUX FORK/gds generated for testing/'
+#filename=folderpath + 'Dual dx tested/Original and quick cut/OriginalCant_unfractured.gds'
+
+theDir='/'.join(filename.split('/')[:-1])+'/'
+theFile=''.join(filename.split('/')[-1][:-4])+'_Fractured.gds'
 
 gdsii = gdspy.GdsLibrary()
 
@@ -49,4 +54,4 @@ for key, val in filtered.iteritems():
 
 OutputCell=gdspy.GdsLibrary()
 OutputCell.add(cut)
-OutputCell.write_gds('GHJ789frac3.gds')
+OutputCell.write_gds(theDir+theFile)
